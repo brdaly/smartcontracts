@@ -1,11 +1,11 @@
-pragma solidity ^0.4.21;
-
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity >=0.7.0 <0.9.0;
 contract SimpleAuction {
     // Parameters of the auction. Times are either
     // absolute unix timestamps (seconds since 1970-01-01)
     // or time periods in seconds.
-    address public beneficiary;
-    uint public auctionEnd;
+    address payable public beneficiary;
+    uint public auctionEndTime;
 
     // Current state of the auction.
     address public highestBidder;
@@ -14,10 +14,11 @@ contract SimpleAuction {
     // Allowed withdrawals of previous bids
     mapping(address => uint) pendingReturns;
 
-    // Set to true at the end, disallows any change
+    // Set to true at the end, disallows any change.
+    // By default initialized to `false`.
     bool ended;
 
-    // Events that will be fired on changes.
+    // Events that will be emitted on changes.
     event HighestBidIncreased(address bidder, uint amount);
     event AuctionEnded(address winner, uint amount);
 
@@ -29,12 +30,12 @@ contract SimpleAuction {
     /// Create a simple auction with `_biddingTime`
     /// seconds bidding time on behalf of the
     /// beneficiary address `_beneficiary`.
-    function SimpleAuction(
+    constructor(
         uint _biddingTime,
-        address _beneficiary
-    ) public {
+        address payable _beneficiary
+    ) {
         beneficiary = _beneficiary;
-        auctionEnd = now + _biddingTime;
+        auctionEndTime = block.timestamp + _biddingTime;
     }
 
     /// Bid on the auction with the value sent
@@ -50,11 +51,20 @@ contract SimpleAuction {
 
         // Revert the call if the bidding
         // period is over.
-        require(now <= auctionEnd);
+        require(
+            block.timestamp <= auctionEndTime,
+            "Auction already ended."
+        );
 
         // If the bid is not higher, send the
-        // money back.
-        require(msg.value > highestBid);
+        // money back (the failing require
+        // will revert all changes in this
+        // function execution including
+        // it having received the money).
+        require(
+            msg.value > highestBid,
+            "There already is a higher bid."
+        );
 
         if (highestBid != 0) {
             // Sending back the money by simply using
@@ -78,7 +88,7 @@ contract SimpleAuction {
             // before `send` returns.
             pendingReturns[msg.sender] = 0;
 
-            if (!msg.sender.send(amount)) {
+            if (!payable(msg.sender).send(amount)) {
                 // No need to call throw here, just reset the amount owing
                 pendingReturns[msg.sender] = amount;
                 return false;
@@ -104,8 +114,8 @@ contract SimpleAuction {
         // external contracts.
 
         // 1. Conditions
-        require(now >= auctionEnd); // auction did not yet end
-        require(!ended); // this function has already been called
+        require(block.timestamp >= auctionEndTime, "Auction not yet ended.");
+        require(!ended, "auctionEnd has already been called.");
 
         // 2. Effects
         ended = true;
